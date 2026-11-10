@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wall Painter</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Top bar -->
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>Wall Painter</span>
+      </div>
+      <button id="btn-open" class="btn ghost" title="Open a folder of photos (⌘O)">Open folder…</button>
+      <div id="photo-name" class="photo-name">No folder open</div>
+      <div class="spacer"></div>
+      <div class="group">
+        <button id="btn-undo" class="icon-btn" title="Undo (⌘Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button id="btn-redo" class="icon-btn" title="Redo (⇧⌘Z)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+      </div>
+      <div class="group">
+        <button id="btn-zoom-out" class="icon-btn" title="Zoom out (−)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>
+        <span id="zoom-label" class="zoom-label">100%</span>
+        <button id="btn-zoom-in" class="icon-btn" title="Zoom in (+)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
+        <button id="btn-fit" class="btn ghost" title="Fit to window (F)">Fit</button>
+      </div>
+      <div class="group">
+        <button id="btn-overlay" class="btn ghost toggle on" title="Show an outline around the selected wall (H)">Outline</button>
+        <button id="btn-compare" class="btn ghost" title="Hold to see the original (or hold C)">Hold: before</button>
+      </div>
+      <div class="group">
+        <button id="btn-export-ba" class="btn ghost" title="Export original and painted side by side">Before/after…</button>
+        <button id="btn-export" class="btn primary" title="Export painted photo (⌘S)">Export…</button>
+      </div>
+    </header>
+
+    <!-- Tool rail -->
+    <nav id="tools">
+      <button class="tool active" data-tool="wand" title="Magic wand (W) — click a wall to select it">
+        <svg viewBox="0 0 24 24"><path d="m4 20 11-11"/><path d="m13 7 4 4"/><path d="M17 3v3M15.5 4.5h3M20 8v2M19 9h2M9 3v2M8 4h2"/></svg>
+        <span>Wand</span>
+      </button>
+      <button class="tool" data-tool="lasso" title="Polygon lasso (L) — click corners, click the first point to close">
+        <svg viewBox="0 0 24 24"><path d="M5 18 4 6l9-2 7 6-5 9z"/><circle cx="5" cy="18" r="1.4"/><circle cx="4" cy="6" r="1.4"/><circle cx="13" cy="4" r="1.4"/><circle cx="20" cy="10" r="1.4"/><circle cx="15" cy="19" r="1.4"/></svg>
+        <span>Lasso</span>
+      </button>
+      <button class="tool" data-tool="brush" title="Brush (B) — paint the selection by hand">
+        <svg viewBox="0 0 24 24"><path d="M14 4h6v6l-9 9a3 3 0 0 1-4 0l-2-2a3 3 0 0 1 0-4z"/><path d="m11 7 6 6"/></svg>
+        <span>Brush</span>
+      </button>
+      <button class="tool" data-tool="erase" title="Eraser (E) — remove from the selection">
+        <svg viewBox="0 0 24 24"><path d="m7 21-4-4a2 2 0 0 1 0-3L13 4a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-9 9"/><path d="M7 21h13M9 10l6 6"/></svg>
+        <span>Eraser</span>
+      </button>
+      <button class="tool" data-tool="match" title="Other-colour wall (M) — click a wall that is painted a different colour now; it gets the same new paint">
+        <svg viewBox="0 0 24 24"><path d="m14 4 6 6"/><path d="M17 7 7.5 16.5"/><path d="M15 3.5l5.5 5.5-1.5 1.5L13.5 5z"/><path d="M8.5 13.5 4 18v2h2l4.5-4.5"/><circle cx="18" cy="18" r="3"/></svg>
+        <span>Other<br>colour</span>
+      </button>
+      <div class="rail-sep"></div>
+      <div class="mode-switch" title="Add to or subtract from the selection (hold ⌥ to flip)">
+        <button class="mode active" data-mode="add">+</button>
+        <button class="mode" data-mode="sub">−</button>
+      </div>
+    </nav>
+
+    <!-- Canvas stage -->
+    <main id="stage">
+      <div id="world">
+        <canvas id="cv-composite"></canvas>
+        <canvas id="cv-orig"></canvas>
+        <canvas id="cv-mask"></canvas>
+      </div>
+      <canvas id="cv-ui"></canvas>
+      <div id="empty" class="empty">
+        <div class="empty-card">
+          <div class="empty-swatches"><i></i><i></i><i></i><i></i></div>
+          <h1>Try a colour before you buy the paint</h1>
+          <p id="empty-text">Loading…</p>
+          <button id="btn-open-empty" class="btn primary big hidden">Open a folder of photos…</button>
+        </div>
+      </div>
+      <div id="sizebar" class="sizebar hidden">
+        <span id="sizebar-label">Eraser size</span>
+        <button class="icon-btn small" id="size-down" title="Smaller ( [ )"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+        <input type="range" id="in-size-top" min="2" max="300" step="1" />
+        <button class="icon-btn small" id="size-up" title="Bigger ( ] )"><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></svg></button>
+        <output id="out-size-top"></output>
+      </div>
+      <div id="busy" class="busy hidden">Working…</div>
+      <div id="toast" class="toast hidden"></div>
+      <div id="statusbar"><span id="status-tool"></span><span id="status-info"></span><span id="status-pos"></span></div>
+    </main>
+
+    <!-- Right panel -->
+    <aside id="panel">
+      <section class="card" id="tool-settings">
+        <h2 id="tool-title">Magic wand</h2>
+        <p class="help" id="tool-help"></p>
+        <div class="field" data-for="wand match">
+          <label>Colour tolerance <output id="out-tol"></output></label>
+          <input type="range" id="in-tol" min="2" max="40" step="1" />
+        </div>
+        <div class="field" data-for="wand match">
+          <label>Stop at edges <output id="out-edge"></output></label>
+          <input type="range" id="in-edge" min="2" max="60" step="1" />
+          <div class="range-ends"><span>subtle edges</span><span>only strong</span></div>
+        </div>
+        <div class="field" data-for="brush erase">
+          <label>Brush size <output id="out-size"></output></label>
+          <input type="range" id="in-size" min="2" max="300" step="1" />
+        </div>
+        <div class="field">
+          <label>Edge softness <output id="out-feather"></output></label>
+          <input type="range" id="in-feather" min="0" max="4" step="1" />
+        </div>
+      </section>
+
+      <section class="card" id="walls-card">
+        <div class="card-head">
+          <h2>Walls</h2>
+          <button id="btn-add-layer" class="btn ghost small">+ New wall</button>
+        </div>
+        <ul id="layers"></ul>
+        <div class="row-actions">
+          <button id="btn-clear-sel" class="btn ghost small">Clear selection</button>
+          <button id="btn-del-layer" class="btn ghost small danger">Delete wall</button>
+        </div>
+      </section>
+
+      <section class="card" id="color-card">
+        <h2>Colour <span id="color-for" class="muted"></span></h2>
+        <div class="color-row">
+          <input type="color" id="in-color" />
+          <input type="text" id="in-hex" maxlength="7" spellcheck="false" />
+          <div id="color-name" class="color-name"></div>
+        </div>
+        <div id="swatches" class="swatches"></div>
+        <div id="recent-wrap" class="recent hidden">
+          <div class="mini-label">Recently used</div>
+          <div id="recent" class="swatches small"></div>
+        </div>
+        <div class="field">
+          <label>Brightness <output id="out-bright"></output></label>
+          <input type="range" id="in-bright" min="-40" max="40" step="1" />
+        </div>
+        <div class="field">
+          <label>Opacity <output id="out-op"></output></label>
+          <input type="range" id="in-op" min="0" max="100" step="1" />
+        </div>
+        <div class="field orig-field">
+          <label>This wall is painted now <output id="orig-name"></output></label>
+          <div class="orig-row">
+            <input type="color" id="in-orig" />
+            <div id="orig-swatches" class="swatches orig"></div>
+          </div>
+          <button id="btn-orig-auto" class="btn small toggle orig-auto" aria-pressed="false" title="Measure this wall's current colour from the photo, so it comes out exactly the new paint whatever colour it was">Match photo — wall was another colour</button>
+          <div id="light-field" class="field light-field hidden">
+            <label>Light <output id="out-light"></output></label>
+            <input type="range" id="in-light" min="-50" max="50" step="1" title="This wall starts as a white wall with only its shading (greys) kept. Lighter lifts the shadows, darker deepens them; the well-lit part stays the paint colour." />
+          </div>
+          <p class="help small">Its real colour — usually white. Was this wall painted a different colour (e.g. blue next to a white wall)?
+            Turn on <b>Match photo</b>: the old colour is dropped and the wall starts as white with only its shading (greys) kept, so all walls with the same paint come out the same. Use <b>Light</b> to lift or deepen the shadows.</p>
+        </div>
+      </section>
+
+      <section class="card keys">
+        <h2>Shortcuts</h2>
+        <dl>
+          <dt>W L B E</dt><dd>wand, lasso, brush, eraser</dd>
+          <dt>M</dt><dd>other-colour wall</dd>
+          <dt>⌥ + click</dt><dd>subtract instead of add</dd>
+          <dt>Space + drag</dt><dd>pan · pinch/⌘-scroll to zoom</dd>
+          <dt>[ ]</dt><dd>brush size</dd>
+          <dt>C (hold)</dt><dd>show original</dd>
+          <dt>H</dt><dd>show/hide outline</dd>
+          <dt>⌘O</dt><dd>open a folder of photos</dd>
+          <dt>← →</dt><dd>previous / next photo</dd>
+          <dt>Enter / Esc</dt><dd>close / cancel lasso</dd>
+        </dl>
+      </section>
+    </aside>
+
+    <!-- Film strip -->
+    <footer id="strip" class="hidden">
+      <div id="strip-inner"></div>
+    </footer>
+  </div>
+
+  <script src="analyze.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
