@@ -42,6 +42,8 @@ npm run build    # makes a real app: src-tauri/target/release/bundle/macos/Wall 
 
 Navigation: two-finger scroll pans (the photo can't scroll off screen), pinch or ⌘-scroll zooms, Space+drag pans, **F** fits the photo.
 
+On Windows and Linux the same shortcuts use **Ctrl** instead of ⌘ and **Alt** instead of ⌥ (Ctrl+O, Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, Ctrl+S, Alt-click, Ctrl-scroll); the app shows them that way there.
+
 ## Projects: your work is saved in the photo folder
 
 Everything you do — walls, colours, selections, for every photo — is saved automatically in **`wall-painter.json`**

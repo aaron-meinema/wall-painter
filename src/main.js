@@ -28,6 +28,15 @@
   const dirname = (p) => { const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')); return i > 0 ? p.slice(0, i) : p; };
   const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
+  // ───────────────────────── platform ─────────────────────────
+  // macOS keeps its own keys and glyphs (⌘ ⌥ ⇧). On Windows and Linux the same shortcuts use Ctrl / Alt / Shift,
+  // so every label that names a key goes through keys().
+  const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
+  const keys = (s) => isMac ? s : String(s)
+    .replace(/⇧⌘Z/g, 'Ctrl+Shift+Z or Ctrl+Y')
+    .replace(/⌘-/g, 'Ctrl-').replace(/⌘/g, 'Ctrl+')
+    .replace(/⌥ \+/g, 'Alt +').replace(/⌥-/g, 'Alt-').replace(/⌥/g, 'Alt');
+
   // ───────────────────────── colour maths ─────────────────────────
   const S2L = new Float32Array(256);
   for (let i = 0; i < 256; i++) { const c = i / 255; S2L[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
@@ -812,8 +821,17 @@
     if (!st.src) return;
     e.preventDefault();
     const { sx, sy } = screenPt(e);
-    if (e.ctrlKey || e.metaKey || e.altKey) zoomAt(sx, sy, Math.exp(-e.deltaY * (e.ctrlKey && !e.metaKey ? 0.012 : 0.004)));
-    else { st.view.x -= e.deltaX; st.view.y -= e.deltaY; applyView(); }
+    const zooming = e.ctrlKey || e.metaKey || e.altKey;
+    let dx = e.deltaX, dy = e.deltaY, rate = e.ctrlKey && !e.metaKey ? 0.012 : 0.004;
+    if (!isMac) {
+      if (e.deltaMode === 1) { dx *= 32; dy *= 32; }               // wheel reported in lines instead of pixels
+      // Ctrl + a mouse-wheel notch arrives as one big step (a touchpad pinch sends many small ones):
+      // keep it to roughly 1.25× per notch instead of 3–4×.
+      if (zooming && Math.abs(dy) >= 40) rate = 0.0022;
+      if (!zooming && e.shiftKey && !dx) { dx = dy; dy = 0; }      // Shift + wheel pans sideways
+    }
+    if (zooming) zoomAt(sx, sy, Math.exp(-dy * rate));
+    else { st.view.x -= dx; st.view.y -= dy; applyView(); }
   }, { passive: false });
   new ResizeObserver(() => { resizeUI(); if (st.W) applyView(); }).observe(stage);
 
@@ -829,7 +847,7 @@
     st.tool = t; st.poly = null;
     document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
     $('tool-title').textContent = TOOL_INFO[t][0];
-    $('tool-help').textContent = TOOL_INFO[t][1];
+    $('tool-help').textContent = keys(TOOL_INFO[t][1]);
     document.querySelectorAll('#tool-settings .field[data-for]').forEach((f) => f.classList.toggle('hidden', !f.dataset.for.split(' ').includes(t)));
     $('sizebar').classList.toggle('hidden', t !== 'brush' && t !== 'erase');
     $('sizebar-label').textContent = t === 'erase' ? 'Eraser size' : 'Brush size';
@@ -989,7 +1007,7 @@
     pushUndo({ type: 'delete', layer: l, index: idx });
     st.active = clamp(idx, 0, st.layers.length - 1);
     renderAll(); renderLayers(); syncColorPanel(); markDirty();
-    toast(`Deleted “${l.name}” — ⌘Z brings it back`);
+    toast(keys(`Deleted “${l.name}” — ⌘Z brings it back`));
   });
   function clearSelection() {
     const l = activeLayer(); if (!l || !l.count) return;
@@ -1011,6 +1029,46 @@
   for (const ev of ['pointerup', 'pointerleave']) $('btn-compare').addEventListener(ev, () => setCompare(false));
   $('btn-export').addEventListener('click', () => exportImage(false));
   $('btn-export-ba').addEventListener('click', () => exportImage(true));
+
+  // ───────────────────────── Windows / Linux ─────────────────────────
+  // None of this runs on macOS.
+  if (!isMac) {
+    // Show Ctrl / Alt / Shift instead of ⌘ ⌥ ⇧ in tooltips and in the Shortcuts list.
+    document.querySelectorAll('[title]').forEach((el) => { el.title = keys(el.title); });
+    document.querySelectorAll('.keys dt, .keys dd').forEach((el) => { el.textContent = keys(el.textContent); });
+
+    const isTextField = (t) => !!t && (t.tagName === 'TEXTAREA' || t.isContentEditable
+      || (t.tagName === 'INPUT' && !['range', 'color', 'checkbox', 'radio', 'button'].includes(t.type)));
+
+    if (isTauri) {
+      // The webview's own right-click menu (Back, Refresh, Print…) would reload the app and lose the view;
+      // keep it only on text fields, where it offers cut / copy / paste.
+      window.addEventListener('contextmenu', (e) => { if (!isTextField(e.target)) e.preventDefault(); });
+
+      // The webview's own browser shortcuts: reload, print, find, page zoom, caret browsing…
+      const BROWSER_KEYS = ['KeyR', 'KeyP', 'KeyF', 'KeyG', 'KeyJ', 'KeyU', 'KeyH', 'KeyD', 'KeyE',
+        'Equal', 'Minus', 'Digit0', 'NumpadAdd', 'NumpadSubtract', 'Numpad0'];
+      window.addEventListener('keydown', (e) => {
+        if (['F3', 'F5', 'F7'].includes(e.code) || ((e.ctrlKey || e.metaKey) && !e.altKey && BROWSER_KEYS.includes(e.code))) e.preventDefault();
+      }, true);
+    }
+
+    // Tapping Alt on its own (used here for "subtract") otherwise moves keyboard focus to the window menu,
+    // after which the next shortcuts are swallowed.
+    for (const ev of ['keydown', 'keyup']) window.addEventListener(ev, (e) => { if (e.key === 'Alt') e.preventDefault(); }, true);
+
+    // Unlike on macOS, a clicked button or slider keeps keyboard focus here. Then Space / Enter would press the
+    // button again and the arrow keys would move the slider as well as switching photo. Give focus back after a click.
+    let pressed = null;
+    window.addEventListener('pointerdown', (e) => {
+      pressed = e.target && e.target.closest ? e.target.closest('button, input[type=range]') : null;
+    }, true);
+    for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, () => {
+      const el = pressed; pressed = null;
+      if (el) setTimeout(() => el.blur(), 0);
+    }, true);
+    document.addEventListener('change', (e) => { if (e.target && e.target.type === 'color') e.target.blur(); });
+  }
 
   // ───────────────────────── keyboard ─────────────────────────
   window.addEventListener('keydown', (e) => {
